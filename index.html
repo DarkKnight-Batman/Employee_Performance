@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workforce Performance Intelligence - Executive Dashboard</title>
+    <!-- Tailwind CSS for Styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Dependencies for React + Recharts in Browser -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
+    <script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Lucide Icons Core -->
+    <script src="https://unpkg.com/lucide@0.372.0/dist/umd/lucide.min.js"></script>
+
+    <style>
+        body { background-color: #F3F2F1; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .recharts-default-tooltip { border-radius: 8px !important; border: none !important; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1) !important; }
+        select { cursor: pointer; }
+        .card-shadow { box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24); }
+        .slicer-label { font-size: 0.65rem; font-weight: 800; color: #666; text-transform: uppercase; margin-bottom: 2px; }
+        .lucide-icon { display: inline-block; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #999; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useMemo, useEffect } = React;
+        const { 
+            LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, 
+            ResponsiveContainer, BarChart, Bar, Legend, PieChart, Pie, Cell, ComposedChart 
+        } = Recharts;
+
+        const Icon = ({ name, size = 16, className = "" }) => {
+            useEffect(() => { if (window.lucide) window.lucide.createIcons(); });
+            const iconMap = {
+                'BarChart3': 'bar-chart-3', 'Filter': 'filter', 'Briefcase': 'briefcase',
+                'Target': 'target', 'Layers': 'layers', 'Globe': 'globe',
+                'UserCheck': 'user-check', 'UserX': 'user-x', 'UserCircle': 'user-circle',
+                'AlertCircle': 'alert-circle', 'TrendingUp': 'trending-up', 'UserPlus': 'user-plus'
+            };
+            const lucideName = iconMap[name] || name.toLowerCase();
+            return <i data-lucide={lucideName} className={`lucide-icon ${className}`} style={{ width: size, height: size }}></i>;
+        };
+
+        // --- HIERARCHICAL CONSTANTS ---
+        const BRANCH_LEADS = {
+            'Hyderabad': ['Rajesh Kumar', 'Ravi Teja', 'Sneha Rao', 'Mahesh Babu'],
+            'Vijayawada': ['Anitha Reddy', 'Siva Prasad', 'Kavya M', 'Venkatesh K'],
+            'Noida': ['Vikram Singh', 'Amit Sharma', 'Pooja Rani', 'Neha Gupta'],
+            'Indore': ['Suresh Babu', 'Rohan J', 'Deepa S', 'Rahul M'],
+            'Bangalore': ['Karthik S', 'Monica G', 'Abhijit P', 'Shruti L']
+        };
+
+        const BRANCHES = Object.keys(BRANCH_LEADS);
+        const CATEGORIES = ['IT', 'Non-IT'];
+        const MARKETS = ['US Recruitment', 'Domestic Recruitment'];
+        const TEAMS = ['Client Recruiting', 'Bench Sales'];
+        const CLIENTS = ['Google', 'Amazon', 'Deloitte', 'Walmart', 'Meta', 'Netflix'];
+
+        const baseTrend = [
+            { name: 'Jan', incoming: 150, supported: 120, submissions: 400, placements: 120 },
+            { name: 'Feb', incoming: 180, supported: 140, submissions: 520, placements: 145 },
+            { name: 'Mar', incoming: 210, supported: 175, submissions: 610, placements: 180 },
+            { name: 'Apr', incoming: 250, supported: 190, submissions: 580, placements: 165 },
+            { name: 'May', incoming: 280, supported: 230, submissions: 700, placements: 210 },
+            { name: 'Jun', incoming: 310, supported: 265, submissions: 820, placements: 240 },
+        ];
+
+        // Expanded dataset with lead assignments
+        const recruitersList = [
+            { id: 1, name: 'Arjun K.', branch: 'Hyderabad', market: 'US Recruitment', team: 'Client Recruiting', client: 'Google', cat: 'IT', incoming: 45, supported: 40, subs: 85, ints: 22, hires: 8, backouts: 1, active: 12, status: 'Active', lead: 'Rajesh Kumar' },
+            { id: 2, name: 'Sreya M.', branch: 'Vijayawada', market: 'US Recruitment', team: 'Bench Sales', client: 'Meta', cat: 'IT', incoming: 30, supported: 30, subs: 120, ints: 45, hires: 12, backouts: 2, active: 18, status: 'Active', lead: 'Anitha Reddy' },
+            { id: 3, name: 'Rahul V.', branch: 'Noida', market: 'Domestic Recruitment', team: 'Client Recruiting', client: 'Deloitte', cat: 'Non-IT', incoming: 20, supported: 12, subs: 25, ints: 4, hires: 1, backouts: 3, active: 5, status: 'Underperforming', lead: 'Vikram Singh' },
+            { id: 4, name: 'Priya S.', branch: 'Indore', market: 'US Recruitment', team: 'Bench Sales', client: 'Amazon', cat: 'IT', incoming: 55, supported: 50, subs: 95, ints: 30, hires: 9, backouts: 0, active: 15, status: 'Active', lead: 'Suresh Babu' },
+            { id: 5, name: 'Karthik R.', branch: 'Bangalore', market: 'US Recruitment', team: 'Client Recruiting', client: 'Walmart', cat: 'IT', incoming: 60, supported: 55, subs: 110, ints: 35, hires: 14, backouts: 4, active: 22, status: 'Active', lead: 'Karthik S' },
+            { id: 6, name: 'Deepak T.', branch: 'Hyderabad', market: 'US Recruitment', team: 'Bench Sales', client: 'Netflix', cat: 'Non-IT', incoming: 25, supported: 20, subs: 30, ints: 8, hires: 2, backouts: 5, active: 8, status: 'Underperforming', lead: 'Sneha Rao' },
+            { id: 7, name: 'Lokesh J.', branch: 'Vijayawada', market: 'Domestic Recruitment', team: 'Client Recruiting', client: 'Google', cat: 'Non-IT', incoming: 35, supported: 25, subs: 40, ints: 10, hires: 3, backouts: 1, active: 10, status: 'Active', lead: 'Venkatesh K' },
+            { id: 8, name: 'Sunita G.', branch: 'Noida', market: 'US Recruitment', team: 'Client Recruiting', client: 'Amazon', cat: 'IT', incoming: 50, supported: 48, subs: 90, ints: 35, hires: 10, backouts: 1, active: 15, status: 'Active', lead: 'Amit Sharma' },
+            { id: 9, name: 'Pankaj L.', branch: 'Indore', market: 'Domestic Recruitment', team: 'Bench Sales', client: 'Meta', cat: 'Non-IT', incoming: 40, supported: 35, subs: 60, ints: 15, hires: 4, backouts: 0, active: 20, status: 'Active', lead: 'Rohan J' },
+            { id: 10, name: 'Meena W.', branch: 'Bangalore', market: 'US Recruitment', team: 'Bench Sales', client: 'Netflix', cat: 'IT', incoming: 35, supported: 35, subs: 80, ints: 25, hires: 7, backouts: 2, active: 12, status: 'Active', lead: 'Monica G' },
+        ];
+
+        const benchData = [
+            { id: 101, name: 'Sandeep V.', tech: 'Java', subs: 12, ints: 4, hires: 1, recruiter: 'Sreya M.', branch: 'Vijayawada', market: 'US Recruitment', client: 'Meta', active: 1, lead: 'Anitha Reddy' },
+            { id: 102, name: 'Megha R.', tech: 'React', subs: 8, ints: 2, hires: 0, recruiter: 'Sreya M.', branch: 'Vijayawada', market: 'US Recruitment', client: 'Meta', active: 1, lead: 'Anitha Reddy' },
+            { id: 103, name: 'Anil K.', tech: 'AWS', subs: 15, ints: 5, hires: 1, recruiter: 'Unallocated', branch: 'Hyderabad', market: 'US Recruitment', client: 'Unallocated', active: 1, lead: 'Rajesh Kumar' },
+            { id: 104, name: 'Rohit S.', tech: 'Python', subs: 4, ints: 1, hires: 0, recruiter: 'Priya S.', branch: 'Indore', market: 'US Recruitment', client: 'Amazon', active: 1, lead: 'Suresh Babu' },
+            { id: 105, name: 'Sneha P.', tech: 'Salesforce', subs: 22, ints: 8, hires: 2, recruiter: 'Priya S.', branch: 'Indore', market: 'US Recruitment', client: 'Deloitte', active: 1, lead: 'Suresh Babu' },
+            { id: 106, name: 'Vikram B.', tech: 'Azure', subs: 5, ints: 0, hires: 0, recruiter: 'Deepak T.', branch: 'Hyderabad', market: 'US Recruitment', client: 'Netflix', active: 1, lead: 'Sneha Rao' },
+            { id: 107, name: 'John D.', tech: 'Angular', subs: 9, ints: 3, hires: 1, recruiter: 'Deepak T.', branch: 'Hyderabad', market: 'US Recruitment', client: 'Netflix', active: 1, lead: 'Sneha Rao' },
+        ];
+
+        const App = () => {
+            const [branch, setBranch] = useState('All');
+            const [market, setMarket] = useState('All');
+            const [team, setTeam] = useState('All');
+            const [cat, setCat] = useState('All');
+            const [client, setClient] = useState('All');
+            const [lead, setLead] = useState('All');
+
+            // --- Cascading Filter Logic ---
+            // 1. Get leads for selected branch
+            const availableLeads = useMemo(() => {
+                if (branch === 'All') {
+                    // Flatten all leads from all branches
+                    return Object.values(BRANCH_LEADS).flat();
+                }
+                return BRANCH_LEADS[branch] || [];
+            }, [branch]);
+
+            // 2. Reset Lead filter if the current lead is not in the new branch's list
+            useEffect(() => {
+                if (lead !== 'All' && !availableLeads.includes(lead)) {
+                    setLead('All');
+                }
+            }, [branch, availableLeads, lead]);
+
+            // Filtering Recruiters
+            const filteredRecruiters = useMemo(() => {
+                return recruitersList.filter(r => 
+                    (branch === 'All' || r.branch === branch) &&
+                    (market === 'All' || r.market === market) &&
+                    (team === 'All' || r.team === team) &&
+                    (cat === 'All' || r.cat === cat) &&
+                    (client === 'All' || r.client === client) &&
+                    (lead === 'All' || r.lead === lead)
+                );
+            }, [branch, market, team, cat, client, lead]);
+
+            // Filtering Bench
+            const filteredBench = useMemo(() => {
+                return benchData.filter(c => 
+                    (branch === 'All' || c.branch === branch) &&
+                    (market === 'All' || c.market === market) &&
+                    (client === 'All' || c.client === client) &&
+                    (lead === 'All' || c.lead === lead)
+                );
+            }, [branch, market, client, lead]);
+
+            // Calculate Aggregates
+            const stats = useMemo(() => {
+                const dataSet = team === 'Bench Sales' ? 
+                    filteredBench.map(c => ({ incoming: 1, supported: c.recruiter !== 'Unallocated' ? 1 : 0, subs: c.subs, ints: c.ints, hires: c.hires, backouts: 0, active: c.active })) : 
+                    filteredRecruiters;
+
+                return dataSet.reduce((acc, curr) => ({
+                    inc: acc.inc + (curr.incoming || 0),
+                    sup: acc.sup + (curr.supported || 0),
+                    subs: acc.subs + (curr.subs || 0),
+                    ints: acc.ints + (curr.ints || 0),
+                    hires: acc.hires + (curr.hires || 0),
+                    backs: acc.backs + (curr.backouts || 0),
+                    act: acc.act + (curr.active || 0)
+                }), { inc: 0, sup: 0, subs: 0, ints: 0, hires: 0, backs: 0, act: 0 });
+            }, [filteredRecruiters, filteredBench, team]);
+
+            const dynamicTrend = useMemo(() => {
+                const totalBaseSubmissions = baseTrend.reduce((a, b) => a + b.submissions, 0);
+                const scaleFactor = stats.subs > 0 ? (stats.subs / totalBaseSubmissions) : 0.05;
+                
+                return baseTrend.map(item => ({
+                    ...item,
+                    incoming: Math.round(item.incoming * scaleFactor * 10),
+                    supported: Math.round(item.supported * scaleFactor * 10),
+                    submissions: Math.round(item.submissions * scaleFactor * 5),
+                    placements: Math.round(item.placements * scaleFactor * 5)
+                }));
+            }, [stats.subs]);
+
+            // Capacity Logic - Bench
+            const totalBenchCount = 210;
+            const currentSalesHC = recruitersList.filter(r => 
+                (branch === 'All' || r.branch === branch) && 
+                (lead === 'All' || r.lead === lead) &&
+                r.team === 'Bench Sales'
+            ).length;
+            const marketedCount = currentSalesHC * 3;
+            const unallocatedBench = totalBenchCount - marketedCount;
+            const benchHiringDeficit = Math.ceil(unallocatedBench / 3);
+
+            // Capacity Logic - Recruiting
+            const currentRecruiterHC = recruitersList.filter(r => 
+                (branch === 'All' || r.branch === branch) && 
+                (lead === 'All' || r.lead === lead) &&
+                r.team === 'Client Recruiting'
+            ).length;
+            const roleInflow = stats.inc;
+            const recruiterCapacity = currentRecruiterHC * 25; 
+            const recruiterHiringDeficit = Math.ceil((roleInflow - recruiterCapacity) / 25);
+
+            const KPI = ({ title, value, sub, iconName, color }) => (
+                <div className={`bg-white border-b-4 ${color} p-4 shadow-sm card-shadow flex flex-col justify-between h-32 transition-all`}>
+                    <div className="flex justify-between items-start">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">{title}</span>
+                        <Icon name={iconName} size={16} className="text-slate-300" />
+                    </div>
+                    <div>
+                        <div className="text-2xl font-black text-slate-800">{value.toLocaleString()}</div>
+                        <div className="text-[10px] font-bold text-slate-400 mt-1 uppercase leading-tight">{sub}</div>
+                    </div>
+                </div>
+            );
+
+            return (
+                <div className="min-h-screen flex flex-col">
+                    <header className="bg-[#0078D4] text-white px-6 py-3 flex items-center justify-between shadow-lg">
+                        <div className="flex items-center gap-3">
+                            <Icon name="BarChart3" size={20} className="text-white" />
+                            <h1 className="text-lg font-bold tracking-tight uppercase">Workforce Capacity Intelligence</h1>
+                        </div>
+                        <div className="text-[10px] font-bold bg-black/20 px-3 py-1 rounded uppercase tracking-widest">Power BI Executive Dashboard</div>
+                    </header>
+
+                    {/* Slicers Section */}
+                    <nav className="bg-white border-b border-slate-200 px-6 py-4 flex flex-wrap items-center gap-6 shadow-sm sticky top-0 z-50">
+                        <div className="flex items-center gap-2 pr-4 border-r border-slate-200">
+                            <Icon name="Filter" size={14} className="text-blue-600" />
+                            <span className="text-[10px] font-black uppercase text-slate-800 tracking-tighter">Slicers</span>
+                        </div>
+                        
+                        {/* Branch Filter */}
+                        <div className="flex flex-col">
+                            <label className="slicer-label">Branch</label>
+                            <select className="text-xs font-bold bg-slate-50 border border-slate-200 rounded px-3 py-1 outline-none" value={branch} onChange={(e) => setBranch(e.target.value)}>
+                                <option value="All">All Branches</option>
+                                {BRANCHES.map(o => <option key={o} value={o}>{o}</option>)}
+                            </select>
+                        </div>
+
+                        {/* Team Lead Filter (Dynamic) */}
+                        <div className="flex flex-col">
+                            <label className="slicer-label">Team Lead</label>
+                            <select className="text-xs font-bold bg-slate-50 border border-blue-200 rounded px-3 py-1 outline-none ring-1 ring-blue-100" value={lead} onChange={(e) => setLead(e.target.value)}>
+                                <option value="All">{branch === 'All' ? 'All Leads' : `Leads in ${branch}`}</option>
+                                {availableLeads.map(o => <option key={o} value={o}>{o}</option>)}
+                            </select>
+                        </div>
+
+                        {[
+                            { label: 'Market', val: market, set: setMarket, opts: MARKETS },
+                            { label: 'Team', val: team, set: setTeam, opts: TEAMS },
+                            { label: 'Category', val: cat, set: setCat, opts: CATEGORIES },
+                            { label: 'Client', val: client, set: setClient, opts: CLIENTS }
+                        ].map((s, i) => (
+                            <div key={i} className="flex flex-col">
+                                <label className="slicer-label">{s.label}</label>
+                                <select className="text-xs font-bold bg-slate-50 border border-slate-200 rounded px-3 py-1 outline-none" value={s.val} onChange={(e) => s.set(e.target.value)}>
+                                    <option value="All">All {s.label}s</option>
+                                    {s.opts.map(o => <option key={o} value={o}>{o}</option>)}
+                                </select>
+                            </div>
+                        ))}
+                    </nav>
+
+                    <main className="p-6 max-w-[1800px] mx-auto w-full grid grid-cols-12 gap-6">
+                        {/* KPI row */}
+                        <div className="col-span-12 grid grid-cols-1 md:grid-cols-4 lg:grid-cols-7 gap-4">
+                            <KPI title="Roles Incoming" value={stats.inc} sub="Filtered Demand" iconName="Briefcase" color="border-blue-400" />
+                            <KPI title="Supporting" value={stats.sup} sub={`${stats.inc > 0 ? ((stats.sup/stats.inc)*100).toFixed(0) : 0}% Support`} iconName="Target" color="border-blue-600" />
+                            <KPI title="Submissions" value={stats.subs} sub="Pipeline Flow" iconName="Layers" color="border-indigo-500" />
+                            <KPI title="Interviews" value={stats.ints} sub={`${stats.subs > 0 ? ((stats.ints/stats.subs)*100).toFixed(0) : 0}% Conv.`} iconName="Globe" color="border-cyan-500" />
+                            <KPI title="Placements" value={stats.hires} sub="Success Hires" iconName="UserCheck" color="border-green-600" />
+                            <KPI title="Backouts" value={stats.backs} sub="Drop-offs" iconName="UserX" color="border-rose-500" />
+                            <KPI title="Active Pipeline" value={stats.act} sub="In-progress" iconName="UserCircle" color="border-amber-500" />
+                        </div>
+
+                        <div className="col-span-12 lg:col-span-8 space-y-6">
+                            <div className="bg-white p-6 shadow-sm border border-slate-200 card-shadow">
+                                <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-6">Fulfillment Trend: Demand vs Support</h3>
+                                <div className="h-[350px]">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <ComposedChart data={dynamicTrend}>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                                            <XAxis dataKey="name" tick={{fontSize: 10}} />
+                                            <YAxis tick={{fontSize: 10}} />
+                                            <Tooltip />
+                                            <Legend verticalAlign="top" align="right" />
+                                            <Bar dataKey="incoming" name="Roles Incoming" fill="#E1EEF9" />
+                                            <Bar dataKey="supported" name="Roles Supported" fill="#0078D4" />
+                                            <Line type="monotone" dataKey="submissions" stroke="#5C2D91" strokeWidth={2} dot={false} />
+                                            <Line type="monotone" dataKey="placements" stroke="#107C10" strokeWidth={3} dot={{fill: '#107C10'}} />
+                                        </ComposedChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+
+                            <div className="bg-white shadow-sm border border-slate-200 overflow-hidden card-shadow">
+                                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                                    <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest">{team === 'Bench Sales' ? 'Bench Candidate Management' : 'Recruiter Audit'}</h3>
+                                    <span className="text-[10px] font-bold text-blue-600 px-2 py-0.5 bg-blue-50 rounded uppercase">
+                                        Active Selection: {lead !== 'All' ? lead : (branch !== 'All' ? branch : 'Enterprise')}
+                                    </span>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left">
+                                        {team === 'Bench Sales' ? (
+                                            <>
+                                                <thead className="text-[9px] uppercase font-black text-slate-400 border-b">
+                                                    <tr>
+                                                        <th className="px-6 py-4">Candidate</th>
+                                                        <th className="px-6 py-4">Lead</th>
+                                                        <th className="px-6 py-4 text-center">Subs</th>
+                                                        <th className="px-6 py-4 text-center">Hires</th>
+                                                        <th className="px-6 py-4">Recruiter</th>
+                                                        <th className="px-6 py-4">Target Client</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y text-[11px] font-medium text-slate-700">
+                                                    {filteredBench.length > 0 ? filteredBench.map(c => (
+                                                        <tr key={c.id}>
+                                                            <td className="px-6 py-4 font-bold">{c.name} <br/><span className="text-[9px] text-slate-400">{c.tech}</span></td>
+                                                            <td className="px-6 py-4 text-slate-500">{c.lead}</td>
+                                                            <td className="px-6 py-4 text-center font-bold">{c.subs}</td>
+                                                            <td className="px-6 py-4 text-center font-bold text-green-600">{c.hires}</td>
+                                                            <td className="px-6 py-4 font-semibold text-blue-600">{c.recruiter}</td>
+                                                            <td className="px-6 py-4 text-slate-400 italic">{c.client}</td>
+                                                        </tr>
+                                                    )) : <tr><td colSpan="6" className="p-8 text-center text-slate-400 italic">No candidates matching selection</td></tr>}
+                                                </tbody>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <thead className="text-[9px] uppercase font-black text-slate-400 border-b">
+                                                    <tr>
+                                                        <th className="px-6 py-4">Employee</th>
+                                                        <th className="px-6 py-4">Team Lead</th>
+                                                        <th className="px-6 py-4 text-center">Roles</th>
+                                                        <th className="px-6 py-4 text-center">Subs</th>
+                                                        <th className="px-6 py-4 text-center">Hires</th>
+                                                        <th className="px-6 py-4">Status</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y text-[11px] font-medium text-slate-700">
+                                                    {filteredRecruiters.length > 0 ? filteredRecruiters.map(r => (
+                                                        <tr key={r.id}>
+                                                            <td className="px-6 py-4 font-bold">{r.name}</td>
+                                                            <td className="px-6 py-4 text-slate-500 font-semibold">{r.lead}</td>
+                                                            <td className="px-6 py-4 text-center font-bold text-blue-600">{r.supported}</td>
+                                                            <td className="px-6 py-4 text-center">{r.subs}</td>
+                                                            <td className="px-6 py-4 text-center font-black text-green-700">{r.hires}</td>
+                                                            <td className="px-6 py-4"><span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${r.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-rose-100 text-rose-700'}`}>{r.status}</span></td>
+                                                        </tr>
+                                                    )) : <tr><td colSpan="6" className="p-8 text-center text-slate-400 italic">No recruiters matching selection</td></tr>}
+                                                </tbody>
+                                            </>
+                                        )}
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* RIGHT INSIGHT PANEL */}
+                        <div className="col-span-12 lg:col-span-4 space-y-6">
+                            
+                            {/* Bench Insights */}
+                            <div className="bg-white p-6 shadow-sm border border-slate-200 card-shadow">
+                                <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4 flex items-center justify-between">
+                                    Bench Capacity Planning
+                                    {unallocatedBench > 0 ? <Icon name="AlertCircle" className="text-rose-500" /> : <Icon name="CheckCircle2" className="text-green-500" />}
+                                </h3>
+                                <div className="space-y-4">
+                                    <div className="flex justify-between items-end border-b pb-2">
+                                        <div>
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase">Total Bench</p>
+                                            <p className="text-2xl font-black text-slate-800">{totalBenchCount}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase">Coverage (1:3)</p>
+                                            <p className="text-xl font-bold text-blue-600">{marketedCount}</p>
+                                        </div>
+                                    </div>
+                                    <div className={`p-4 rounded border ${benchHiringDeficit > 0 ? 'bg-rose-50 border-rose-100' : 'bg-green-50 border-green-100'}`}>
+                                        <div className="flex items-center gap-2">
+                                            <Icon name={benchHiringDeficit > 0 ? 'UserPlus' : 'CheckCircle2'} size={14} className={benchHiringDeficit > 0 ? 'text-rose-600' : 'text-green-600'} />
+                                            <p className={`text-sm font-black ${benchHiringDeficit > 0 ? 'text-rose-700' : 'text-green-700'}`}>
+                                                {benchHiringDeficit > 0 ? `HIRE +${benchHiringDeficit} SALES REPS` : 'STAFFING OPTIMAL'}
+                                            </p>
+                                        </div>
+                                        {benchHiringDeficit > 0 && <p className="text-[9px] text-rose-400 mt-1 uppercase font-bold tracking-tighter">Current Gap: {unallocatedBench} Candidates</p>}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Recruiting Insights */}
+                            <div className="bg-white p-6 shadow-sm border border-slate-200 card-shadow">
+                                <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4 flex items-center justify-between">
+                                    Recruiter Bandwidth
+                                    {recruiterHiringDeficit > 0 ? <Icon name="AlertCircle" className="text-rose-500" /> : <Icon name="CheckCircle2" className="text-green-500" />}
+                                </h3>
+                                <div className="space-y-4">
+                                    <div className="flex justify-between items-end border-b pb-2">
+                                        <div>
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase">Load (Incoming)</p>
+                                            <p className="text-2xl font-black text-slate-800">{roleInflow}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase">Current Limit</p>
+                                            <p className="text-xl font-bold text-indigo-600">{recruiterCapacity}</p>
+                                        </div>
+                                    </div>
+                                    <div className={`p-4 rounded border ${recruiterHiringDeficit > 0 ? 'bg-rose-50 border-rose-100' : 'bg-green-50 border-green-100'}`}>
+                                        <div className="flex items-center gap-2">
+                                            <Icon name={recruiterHiringDeficit > 0 ? 'UserPlus' : 'CheckCircle2'} size={14} className={recruiterHiringDeficit > 0 ? 'text-rose-600' : 'text-green-600'} />
+                                            <p className={`text-sm font-black ${recruiterHiringDeficit > 0 ? 'text-rose-700' : 'text-green-700'}`}>
+                                                {recruiterHiringDeficit > 0 ? `HIRE +${recruiterHiringDeficit} RECRUITERS` : 'RECRUITERS OPTIMAL'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="bg-slate-800 p-6 shadow-sm text-white card-shadow rounded-sm">
+                                <div className="flex items-center gap-2 mb-4">
+                                    <Icon name="TrendingUp" size={16} className="text-blue-400" />
+                                    <h3 className="text-[10px] font-black opacity-50 uppercase tracking-widest">Growth Forecast</h3>
+                                </div>
+                                <div className="space-y-4 text-[11px]">
+                                    <div className="border-b border-white/10 pb-4">
+                                        <p className="opacity-60 font-bold uppercase text-[9px]">Location Intelligence</p>
+                                        <p className="mt-1 text-blue-100 leading-relaxed font-medium">
+                                            {lead !== 'All' ? `Analysis for Team ${lead} shows ${stats.hires > 5 ? 'High' : 'Improving'} velocity.` : 'Select a Lead to see team-specific forecast.'}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </main>
+
+                    <footer className="bg-white border-t border-slate-200 px-6 py-4 flex justify-between items-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                        <span>Workforce Intelligence Portal</span>
+                        <span>v3.4.0 • Context-Aware Lead Filters</span>
+                    </footer>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
